@@ -1,0 +1,28 @@
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache/
+**/.mypy_cache/
+temp_processing/
+
+# Don't include UI or prototyping
+prototyping/
+assets/
+**/frontend/ 
+
+# No git history
+.git
+.gitignore
+
+# macOS junk
+.DS_Store
+
+# Python envs
+env/
+venv/
+.venv/
+
+# IDE configs
+.vscode/
+.idea/

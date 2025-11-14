@@ -1,7 +1,14 @@
 .git
-__pycache__
+__pycache__/
 .venv/
 *.log
-prototyping/
-frontend/
+*.pyc
+*.pyo
+*.pyd
+.env
+.vscode/
+.idea/
+temp_processing/
 assets/
+*.md
+**/*.env

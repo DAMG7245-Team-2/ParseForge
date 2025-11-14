@@ -1,3 +1,4 @@
 .venv/
-backend/temp_processing/
-backend/__pycache__/
+apps/backend/temp_processing/
+__pycache__/
+**/*.env

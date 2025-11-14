@@ -8,9 +8,7 @@ from pathlib import Path
 import fitz
 from dotenv import load_dotenv
 from llama_parse import LlamaParse
-import nest_asyncio
 
-nest_asyncio.apply()
 output_folder = Path("./temp_processing/output")
 images_folder = output_folder / 'extracted_images'
 tables_folder = output_folder / 'extracted_tables'
