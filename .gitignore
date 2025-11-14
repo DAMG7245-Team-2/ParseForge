@@ -2,3 +2,8 @@
 apps/backend/temp_processing/
 __pycache__/
 **/*.env
+
+# uv files (tracking requirements.txt instead)
+uv.lock
+.python-version
+pyproject.toml

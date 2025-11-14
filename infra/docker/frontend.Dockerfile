@@ -1,31 +1,25 @@
-# Use an official Python runtime as a parent image
 FROM python:3.10-slim
 
-# Set environment variables for the application
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8501
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Copy the requirements file and install dependencies
-# We install dependencies before copying the rest of the code to leverage Docker layer caching
+# 2. Install Python packages and clear pip cache
 COPY apps/frontend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    rm -rf /root/.cache/pip
 
-# Copy the application files
-# We copy all the Python code, the Streamlit app, and the .env file (if used directly)
-COPY apps/frontend/. /app
+# 3. Create non-root user (using Debian commands)
+RUN groupadd --gid 1001 appuser && \
+    useradd --uid 1001 --gid 1001 -m -s /bin/bash appuser
 
-# Expose the port Streamlit runs on
+# 4. Copy app code and set ownership
+COPY apps/frontend/ /app
+RUN chown -R appuser:appuser /app
+
 EXPOSE ${PORT}
+USER appuser
 
-# Healthcheck (Optional but recommended for robust deployments)
-# Checks if Streamlit is responding on the exposed port
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/_stcore/health || exit 1
-
-# Command to run the Streamlit application
-# We use entrypoint form for consistency
 CMD ["streamlit", "run", "app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]

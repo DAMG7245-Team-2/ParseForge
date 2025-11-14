@@ -10,6 +10,7 @@ temp_processing/
 prototyping/
 assets/
 **/backend/ 
+**/infra/
 
 # No git history
 .git
@@ -22,6 +23,9 @@ assets/
 env/
 venv/
 .venv/
+pyproject.toml
+poetry.lock
+uv.lock
 
 # IDE configs
 .vscode/
