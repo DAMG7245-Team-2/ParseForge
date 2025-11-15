@@ -6,7 +6,7 @@ import fitz
 import pandas as pd
 from docling.document_converter import DocumentConverter
 
-from cloud_ops import (
+from backend.cloud_ops import (
     download_file_from_s3,
     upload_file_to_s3,
     upload_directory_to_s3,

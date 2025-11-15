@@ -8,7 +8,7 @@ from fastapi import FastAPI, UploadFile, HTTPException, status, BackgroundTasks,
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from pipelines import (
+from backend.pipelines import (
     standardize_docling,
     standardize_markitdown,
     html_to_md_docling,

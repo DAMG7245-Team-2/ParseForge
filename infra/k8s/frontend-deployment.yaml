@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: parseforge
+  labels: 
+    app: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: frontend
+          image: ghcr.io/nehadevarapalli/parseforge-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8501
+              name: http
+          env:
+            - name: FASTAPI_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: frontend-config
+                  key: FASTAPI_URL
+            - name: ENVIRONMENT
+              value: "production"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          # readinessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: 8501
+          #   initialDelaySeconds: 5
+          #   periodSeconds: 10
+          #   timeoutSeconds: 3
+          #   successThreshold: 1
+          #   failureThreshold: 3
+          # livenessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: 8501
+          #   initialDelaySeconds: 15
+          #   periodSeconds: 20
+          #   timeoutSeconds: 3
+          #   successThreshold: 1
+          #   failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: parseforge
+  labels:
+    app: frontend
+spec:
+  selector:
+    app: frontend
+  ports:
+    - name: http
+      port: 8501  # external cluster port (Ingress will map 80 to this)
+      targetPort: 8501
+  type: ClusterIP

@@ -7,11 +7,11 @@ import requests
 from docling.document_converter import DocumentConverter
 from markitdown import MarkItDown
 
-from cloud_ops import upload_file_to_s3, upload_directory_to_s3
-from firecrawl_code import firecrawl
-from llamaparser_pdf import llama_parse_pdf
-from python_pdf_extraction import extract_text_with_docling, extract_images_to_folder, extract_tables_with_docling
-from webscraper import WebScraper
+from backend.cloud_ops import upload_file_to_s3, upload_directory_to_s3
+from backend.firecrawl_code import firecrawl
+from backend.llamaparser_pdf import llama_parse_pdf
+from backend.python_pdf_extraction import extract_text_with_docling, extract_images_to_folder, extract_tables_with_docling
+from backend.webscraper import WebScraper
 
 base_dir = Path('./temp_processing')
 output = base_dir / Path('output')
