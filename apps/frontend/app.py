@@ -1,6 +1,8 @@
 import os
-import streamlit as st
+import re
+
 import requests
+import streamlit as st
 from dotenv import load_dotenv
 
 # --- 1. Configuration and Initialization ---
@@ -52,12 +54,12 @@ status_col, desc_col = st.columns([1, 4])
 with status_col:
     if health_status:
         st.markdown(
-            f"**Backend Status:** <span style='color:green; font-weight:bold;'>🟢 Online</span>",
+            "**Backend Status:** <span style='color:green; font-weight:bold;'>🟢 Online</span>",
             unsafe_allow_html=True,
         )
     else:
         st.markdown(
-            f"**Backend Status:** <span style='color:red; font-weight:bold;'>🔴 Offline</span>",
+            "**Backend Status:** <span style='color:red; font-weight:bold;'>🔴 Offline</span>",
             unsafe_allow_html=True,
         )
 
@@ -157,27 +159,25 @@ def process_content(endpoint, files=None, json=None, params=None):
         f"{FASTAPI_URL}{endpoint}", files=files, json=json, params=params
     )
     if response.status_code == 200:
-        content_disposition = response.headers.get("Content-Disposition")
-        if content_disposition and "attachment; filename=" in content_disposition:
-            filename = content_disposition.split("filename=")[1]
-            if filename.endswith(".zip"):
-                st.success("✅ All components processed successfully!")
-                st.download_button(
-                    label="⬇️ Download ZIP Archive",
-                    data=response.content,
-                    file_name=filename,
-                    mime="application/zip",
-                )
-            else:
-                st.success("✅ Markdown processed successfully!")
-                st.download_button(
-                    label="⬇️ Download Markdown",
-                    data=response.content,
-                    file_name=filename,
-                    mime="text/markdown",
-                )
+        content_disposition = response.headers.get("Content-Disposition", "")
+        match = re.findall(r'filename="?([^"]+)"?', content_disposition)
+        filename = match[0] if match else "downloaded_file"
+        if filename.endswith(".zip"):
+            st.success("✅ All components processed successfully!")
+            st.download_button(
+                label="⬇️ Download ZIP Archive",
+                data=response.content,
+                file_name=filename,
+                mime="application/zip",
+            )
         else:
-            st.error("Unexpected response format. Please try again.")
+            st.success("✅ Markdown processed successfully!")
+            st.download_button(
+                label="⬇️ Download Markdown",
+                data=response.content,
+                file_name=filename,
+                mime="text/markdown",
+            )
     else:
         st.error(f"❌ Error: {response.status_code} - {response.text}")
 
