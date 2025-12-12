@@ -6,7 +6,7 @@ llama_parse==0.5.20
 markitdown==0.0.1a3
 pandas==2.2.3
 Pillow
-pymupdf
+pymupdf==1.26.6
 python-dotenv==1.0.1
 python-multipart
 Requests
@@ -14,3 +14,4 @@ pathlib~=1.0.1
 python-dotenv~=1.0.1
 llama-parse~=0.5.20
 uvicorn
+easyocr

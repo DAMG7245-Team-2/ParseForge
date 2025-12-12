@@ -11,6 +11,9 @@ RUN useradd -m appuser
 # Set working directory
 WORKDIR /app
 
+# Install system dependencies
+RUN apt-get update && apt-get install -y tesseract-ocr libgl1 && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies (cache-friendly)
 COPY apps/backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
