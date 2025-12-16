@@ -154,32 +154,62 @@ else:
         st.error("Processing disabled because the backend service is offline.")
 
 
-def process_content(endpoint, files=None, json=None, params=None):
-    response = requests.post(
-        f"{FASTAPI_URL}{endpoint}", files=files, json=json, params=params
-    )
-    if response.status_code == 200:
-        content_disposition = response.headers.get("Content-Disposition", "")
-        match = re.findall(r'filename="?([^"]+)"?', content_disposition)
-        filename = match[0] if match else "downloaded_file"
-        if filename.endswith(".zip"):
-            st.success("✅ All components processed successfully!")
-            st.download_button(
-                label="⬇️ Download ZIP Archive",
-                data=response.content,
-                file_name=filename,
-                mime="application/zip",
-            )
-        else:
-            st.success("✅ Markdown processed successfully!")
-            st.download_button(
-                label="⬇️ Download Markdown",
-                data=response.content,
-                file_name=filename,
-                mime="text/markdown",
-            )
+def process_content(endpoint, files=None, json=None, params=None, timeout=300):
+    try:
+        response = requests.post(
+            f"{FASTAPI_URL}{endpoint}", 
+            files=files, 
+            json=json, 
+            params=params, 
+            timeout=timeout,
+        )
+        # Raise for HTTP errors
+        response.raise_for_status()
+    except requests.exceptions.ConnectionError as e:
+        st.error(
+            "❌ Connection error: Could not connect to the backend service."
+            "Please try again in a few minutes."
+        )
+        # Logging tech detail for debugging
+        st.caption(f"❌ Connection error detail: {e}")
+        return
+    except requests.exceptions.Timeout as e:
+        st.error(
+            f"❌ Timeout error: The request took longer than {timeout} seconds to complete."
+            "Please try again."
+        )
+        return
+    except requests.exceptions.HTTPError as e:
+        # Backend returned 4xx/5xx with a body
+        status = e.response.status_code if e.response is not None else "unknown"
+        text = e.response.text if e.response is not None else ""
+        st.error(f"❌ HTTP error: {status} - {text}")
+        return
+    except requests.exceptions.RequestException as e:
+        # Catch-all for other request errors
+        st.error(f"❌ Unexpected error while calling the backend: {e}")
+        return
+    
+    # Success path (200 OK)
+    content_disposition = response.headers.get("Content-Disposition", "")
+    match = re.findall(r'filename="?([^"]+)"?', content_disposition)
+    filename = match[0] if match else "downloaded_file"
+    if filename.endswith(".zip"):
+        st.success("✅ All components processed successfully!")
+        st.download_button(
+            label="⬇️ Download ZIP Archive",
+            data=response.content,
+            file_name=filename,
+            mime="application/zip",
+        )
     else:
-        st.error(f"❌ Error: {response.status_code} - {response.text}")
+        st.success("✅ Markdown processed successfully!")
+        st.download_button(
+            label="⬇️ Download Markdown",
+            data=response.content,
+            file_name=filename,
+            mime="text/markdown",
+        )
 
 
 # Process Button
