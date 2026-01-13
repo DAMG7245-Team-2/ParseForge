@@ -63,29 +63,11 @@ spec:
               value: "8000"
           resources:
             requests:
-              cpu: "250m"
-              memory: "256Mi"
+              cpu: "500m"
+              memory: "1Gi" #Minimum guaranteed memory
             limits:
-              cpu: "1000m"
-              memory: "1Gi"
-          # readinessProbe:
-          #   httpGet:
-          #     path: /health
-          #     port: 8000
-          #   initialDelaySeconds: 5
-          #   periodSeconds: 10
-          #   failureThreshold: 3
-          #   successThreshold: 1
-          #   timeoutSeconds: 3
-          # livenessProbe:
-          #   httpGet:
-          #     path: /health
-          #     port: 8000
-          #   initialDelaySeconds: 15
-          #   periodSeconds: 20
-          #   failureThreshold: 5
-          #   timeoutSeconds: 3
-          #   successThreshold: 1
+              cpu: "2000m"
+              memory: "5Gi" #Maximum allowed memory
           lifecycle:
             preStop:
               exec:
