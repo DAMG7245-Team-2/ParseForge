@@ -4,7 +4,7 @@ from pathlib import Path
 
 import fitz
 import pandas as pd
-from docling.document_converter import DocumentConverter
+from markitdown import MarkItDown
 
 from backend.cloud_ops import (
     download_file_from_s3,
@@ -26,14 +26,12 @@ output_dir = local_base_dir / Path('output')
 
 
 # Extract text from the PDF and write to Markdown
-def extract_text_with_docling(pdf_file, markdown_file):
-    converter = DocumentConverter()
+def extract_text_with_markitdown(pdf_file, markdown_file):
+    converter = MarkItDown()
     result = converter.convert(pdf_file)
 
-    markdown_content = result.document.export_to_markdown()
-
     with open(markdown_file, 'w', encoding='utf-8') as f:
-        f.write(markdown_content)
+        f.write(result.text_content)
 
     print(f'Text extracted and saved to "{markdown_file}".')
 
@@ -62,18 +60,19 @@ def extract_images_to_folder(pdf_file, image_folder):
 
 
 # Extract tables from the PDF and save them to a folder
-def extract_tables_with_docling(pdf_file, table_folder):
-    converter = DocumentConverter()
-    conv_res = converter.convert(pdf_file)
+def extract_tables_with_pymupdf(pdf_file, table_folder):
     os.makedirs(table_folder, exist_ok=True)
-    doc_filename = conv_res.input.file.stem
-
-    for table_ix, table in enumerate(conv_res.document.tables):
-        table_df: pd.DataFrame = table.export_to_dataframe()
-
-        element_csv_filename = table_folder / f'{doc_filename}-table-{table_ix + 1}.csv'
-        print(f'Saving CSV table to {element_csv_filename}')
-        table_df.to_csv(element_csv_filename)
+    doc = fitz.open(pdf_file)
+    doc_filename = Path(pdf_file).stem
+    
+    for page_index, page in enumerate(doc):
+        tabs = page.find_tables()
+        if tabs.tables:
+            for i, tab in enumerate(tabs):
+                df = tab.to_pandas()
+                element_csv_filename = table_folder / f'{doc_filename}-page{page_index+1}-table{i+1}.csv'
+                print(f'Saving CSV table to {element_csv_filename}')
+                df.to_csv(element_csv_filename)
 
     print(f"Tables extracted and saved to '{table_folder}'.")
 
@@ -93,7 +92,7 @@ def main():
 
     # Step 2: Extract text and upload Markdown file to S3
     markdown_local_path = output_dir / f'{Path(local_pdf_path).stem}_extracted_output.md'
-    extract_text_with_docling(local_pdf_path, markdown_local_path)
+    extract_text_with_markitdown(local_pdf_path, markdown_local_path)
     markdown_s3_key = f'{s3_prefix_text}/{Path(markdown_local_path).name}'
     upload_file_to_s3(str(markdown_local_path), markdown_s3_key, bucket_name=s3_bucket)
 
@@ -102,7 +101,7 @@ def main():
         tags={
             'type': 'text',
             'format': 'markdown',
-            'extraction_method': 'docling',
+            'extraction_method': 'markitdown',
             'source': 'pdf'
         },
         bucket_name=s3_bucket
@@ -131,7 +130,7 @@ def main():
 
     # Step 4: Extract tables and upload the directory to S3
     tables_local_folder = output_dir / "extracted_tables"
-    extract_tables_with_docling(local_pdf_path, tables_local_folder)
+    extract_tables_with_pymupdf(local_pdf_path, tables_local_folder)
     upload_directory_to_s3(str(tables_local_folder), s3_prefix_tables, bucket_name=s3_bucket)
 
     for root, _, files in os.walk(tables_local_folder):
@@ -144,7 +143,7 @@ def main():
                 tags={
                     'type': 'table',
                     'format': 'csv',
-                    'extraction_method': 'docling',
+                    'extraction_method': 'pymupdf',
                     'source': 'pdf'
                 },
                 bucket_name=s3_bucket

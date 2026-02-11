@@ -4,13 +4,12 @@ import uuid
 from pathlib import Path
 
 import requests
-from docling.document_converter import DocumentConverter
 from markitdown import MarkItDown
 
 from backend.cloud_ops import upload_file_to_s3, upload_directory_to_s3
 from backend.firecrawl_code import firecrawl
 from backend.llamaparser_pdf import llama_parse_pdf
-from backend.python_pdf_extraction import extract_text_with_docling, extract_images_to_folder, extract_tables_with_docling
+from backend.python_pdf_extraction import extract_text_with_markitdown, extract_images_to_folder, extract_tables_with_pymupdf
 from backend.webscraper import WebScraper
 
 base_dir = Path('./temp_processing')
@@ -20,7 +19,7 @@ s3_pdf_input_prefix = 'pdfs/raw'
 s3_html_input_prefix = 'html/raw'
 
 
-def html_to_md_docling(url: str, job_name: uuid):
+def html_to_md_python(url: str, job_name: uuid):
     s3_prefix_text = 'html/html-parser/extracted-text'
     s3_prefix_images = 'html/html-parser/extracted-images'
     s3_prefix_tables = 'html/html-parser/extracted-tables'
@@ -43,53 +42,6 @@ def html_to_md_docling(url: str, job_name: uuid):
     images_local_folder = output / "extracted_images"
     tables_local_folder = output / "extracted_tables"
 
-    if images_local_folder.exists() and any(images_local_folder.iterdir()):
-        output_data['images'] = images_local_folder
-        upload_directory_to_s3(str(images_local_folder), s3_prefix_images, bucket_name=s3_bucket)
-
-    if tables_local_folder.exists() and any(tables_local_folder.iterdir()):
-        output_data['tables'] = tables_local_folder
-        upload_directory_to_s3(str(tables_local_folder), s3_prefix_tables, bucket_name=s3_bucket)
-
-    # Step 4: Extract text and upload Markdown file to S3
-    doc_converter = DocumentConverter()
-    conv_result = doc_converter.convert(output / 'html' / f'{job_name}.html')
-    markdown_output = conv_result.document.export_to_markdown()
-    os.makedirs(output / 'markdown', exist_ok=True)
-    markdown_path = output / 'markdown' / f'{job_name}.md'
-    with open(markdown_path, 'w') as f:
-        f.write(markdown_output)
-
-    if markdown_path.exists() and not is_file_empty(markdown_path):
-        output_data['markdown'] = markdown_path
-        markdown_s3_key = f'{s3_prefix_text}/{job_name}.md'
-        upload_file_to_s3(str(markdown_path), markdown_s3_key, bucket_name=s3_bucket)
-
-    return output_data
-
-
-def html_to_md_markitdown(url: str, job_name: uuid):
-    s3_prefix_text = 'html/html-parser/extracted-text'
-    s3_prefix_images = 'html/html-parser/extracted-images'
-    s3_prefix_tables = 'html/html-parser/extracted-tables'
-
-    output_data = {
-        'markdown': None,
-        'images': None,
-        'tables': None
-    }
-
-    # Step 1: Extract images & tables
-    out = WebScraper(url, job_name).extract_all()
-    html_path = output / 'html' / f'{job_name}.html'
-
-    # Step 2: Upload input HTML to S3
-    input_html_s3_key = f'{s3_html_input_prefix}/{job_name}.html'
-    upload_file_to_s3(str(html_path), input_html_s3_key, bucket_name=s3_bucket)
-
-    # Step 3: Upload images and tables to S3
-    images_local_folder = output / "extracted_images"
-    tables_local_folder = output / "extracted_tables"
     if images_local_folder.exists() and any(images_local_folder.iterdir()):
         output_data['images'] = images_local_folder
         upload_directory_to_s3(str(images_local_folder), s3_prefix_images, bucket_name=s3_bucket)
@@ -105,6 +57,7 @@ def html_to_md_markitdown(url: str, job_name: uuid):
     markdown_path = output / 'markdown' / f'{job_name}.md'
     with open(markdown_path, 'w') as f:
         f.write(markdown_output.text_content)
+    markdown_path = output / 'markdown' / f'{job_name}.md'
 
     if markdown_path.exists() and not is_file_empty(markdown_path):
         output_data['markdown'] = markdown_path
@@ -114,84 +67,7 @@ def html_to_md_markitdown(url: str, job_name: uuid):
     return output_data
 
 
-def standardize_docling(input: str, job_name: uuid):
-    if input.startswith("http://") or input.startswith("https://"):
-        s3_prefix_text = 'html/docling/extracted-text'
-        try:
-            html_data = WebScraper(input, job_name).get_webpage()
-            file = output / 'html' / f'{job_name}.html'
-            os.makedirs(output / 'html', exist_ok=True)
-            with open(file, 'w') as f:
-                f.write(html_data)
-            html_cloud_path = f'{s3_html_input_prefix}/{job_name}.html'
-            upload_file_to_s3(str(file), html_cloud_path, bucket_name=s3_bucket)
-        except Exception as e:
-            print(e)
-            return -1
-    else:
-        file = Path(input)
-        if file.suffix != '.pdf':
-            raise ValueError("Input file must be a PDF")
-        s3_prefix_text = 'pdfs/docling/extracted-text'
-        pdf_cloud_path = f'{s3_pdf_input_prefix}/{job_name}.pdf'
-        upload_file_to_s3(str(file), pdf_cloud_path, bucket_name=s3_bucket)
-
-    doc_converter = DocumentConverter()
-    conv_result = doc_converter.convert(str(file))
-    markdown_output = conv_result.document.export_to_markdown()
-
-    markdown_dir = output / 'markdown'
-    os.makedirs(markdown_dir, exist_ok=True)
-    markdown_path = markdown_dir / f'{job_name}.md'
-    with open(markdown_path, 'w') as f:
-        f.write(markdown_output)
-
-    # Upload MD to S3
-    markdown_s3_key = f'{s3_prefix_text}/{job_name}.md'
-    upload_file_to_s3(str(markdown_path), markdown_s3_key, bucket_name=s3_bucket)
-
-    return markdown_path
-
-
-def standardize_markitdown(input: str, job_name: uuid):
-    if input.startswith("http://") or input.startswith("https://"):
-        s3_prefix_text = 'html/markitdown/extracted-text'
-        try:
-            html_data = WebScraper(input, job_name).get_webpage()
-            file = output / 'html' / f'{job_name}.html'
-            os.makedirs(output / 'html', exist_ok=True)
-            with open(file, 'w') as f:
-                f.write(html_data)
-            html_cloud_path = f'{s3_html_input_prefix}/{job_name}.html'
-            upload_file_to_s3(str(file), html_cloud_path, bucket_name=s3_bucket)
-        except Exception as e:
-            print(e)
-            return -1
-    else:
-        file = Path(input)
-        if file.suffix != '.pdf':
-            raise ValueError("Input file must be a PDF")
-        s3_prefix_text = 'pdfs/markitdown/extracted-text'
-        pdf_cloud_path = f'{s3_pdf_input_prefix}/{job_name}.pdf'
-        upload_file_to_s3(str(file), pdf_cloud_path, bucket_name=s3_bucket)
-        
-    md = MarkItDown()
-    conv_result = md.convert(str(file))
-
-    markdown_dir = output / 'markdown'
-    os.makedirs(markdown_dir, exist_ok=True)
-    markdown_path = markdown_dir / f'{job_name}.md'
-    with open(markdown_path, 'w') as f:
-        f.write(conv_result.text_content)
-
-    # Upload MD to S3
-    markdown_s3_key = f'{s3_prefix_text}/{job_name}.md'
-    upload_file_to_s3(str(markdown_path), markdown_s3_key, bucket_name=s3_bucket)
-
-    return markdown_path
-
-
-def pdf_to_md_docling(file: Path, job_name: uuid):
+def pdf_to_md_python(file: Path, job_name: uuid):
     s3_prefix_text = 'pdfs/python-parser/extracted-text'
     s3_prefix_images = 'pdfs/python-parser/extracted-images'
     s3_prefix_tables = 'pdfs/python-parser/extracted-tables'
@@ -208,7 +84,7 @@ def pdf_to_md_docling(file: Path, job_name: uuid):
 
     # Step 2: Extract text and upload Markdown file to S3
     markdown_local_path = output / f'{job_name}.md'
-    extract_text_with_docling(file, markdown_local_path)
+    extract_text_with_markitdown(file, markdown_local_path)
 
     if markdown_local_path.exists() and not is_file_empty(markdown_local_path):
         output_data['markdown'] = markdown_local_path
@@ -225,7 +101,7 @@ def pdf_to_md_docling(file: Path, job_name: uuid):
 
     # Step 4: Extract tables and upload the directory to S3
     tables_local_folder = output / "extracted_tables"
-    extract_tables_with_docling(file, tables_local_folder)
+    extract_tables_with_pymupdf(file, tables_local_folder)
 
     if tables_local_folder.exists() and any(tables_local_folder.iterdir()):
         output_data['tables'] = tables_local_folder

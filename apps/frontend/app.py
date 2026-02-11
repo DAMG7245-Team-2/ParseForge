@@ -10,7 +10,7 @@ load_dotenv()
 FASTAPI_URL = os.getenv("FASTAPI_URL", "https://nehadevarapalli-parseforge.hf.space")
 APP_NAME = "ParseForge"
 APP_DESCRIPTION = """📄🌐 A versatile document processing tool that converts PDFs and webpages into structured markdown content and extracts all data. 
-Choose between our **custom Python parser** (built with PyMuPDF, Docling, and BeautifulSoup) or the **enterprise-grade Llama parser (for PDFs) or Firecrawl (for Webpages)** for comparison."""
+Choose between our **custom Python parser** (built with PyMuPDF and BeautifulSoup) or the **enterprise-grade Llama parser (for PDFs) or Firecrawl (for Webpages)** for comparison."""
 
 st.set_page_config(page_title=APP_NAME, page_icon="⚙️", layout="centered")
 
@@ -75,7 +75,7 @@ with input_col:
         "Select Input Type", ["📄 PDF File", "🌐 Webpage URL"], horizontal=True
     )
 
-parser_options = ["Python Parser", "Standardize Docling", "Standardize MarkItDown"]
+parser_options = ["Python Parser"]
 if "PDF" in input_type:
     parser_options.append("Llama Parser")
 else:
@@ -87,9 +87,8 @@ with parser_col:
         parser_options,
         index=0,  # Default selection
         format_func=lambda x: "Select Parser" if x == "" else x,
-        help="""Python Parser: Custom-built using PyMuPDF (image extraction), Docling (text & table extraction), 
-BeautifulSoup (webpage parsing). Optimized for specific use cases.\nLlama Parser: AI-powered enterprise solution for superior accuracy (use for PDFs).\n 
-Firecrawl: Advanced web scraping and parsing engine (use for webpages).\nStandardize Docling: Standardize document using Docling.\nStandardize MarkItDown: Standardize document using MarkItDown.""",
+        help="""Python Parser: Custom-built using PyMuPDF (text & image extraction), BeautifulSoup (webpage parsing). Optimized for specific use cases.\nLlama Parser: AI-powered enterprise solution for superior accuracy (use for PDFs).\n 
+Firecrawl: Advanced web scraping and parsing engine (use for webpages).\nStandardize MarkItDown: Standardize document using MarkItDown.""",
         disabled=False,
     )
 
@@ -110,48 +109,38 @@ else:
 st.divider()
 
 # Output options
-if parser_type not in ["Standardize Docling", "Standardize MarkItDown"]:
-    st.subheader("🔧 Output Options")
-    output_col = st.columns([1])[0]
-
-    with output_col:
-        output_formats = st.multiselect(
-            "Select components to include:",
-            options=["Markdown", "Images", "Tables"],
-            default=["Markdown"],
-            help="Choose which components to include in your output.",
-        )
-
-    # Disable processing if the backend is offline OR input/outputs are missing
-    process_disabled = (
-        (not health_status)
-        or len(output_formats) == 0
-        or ("PDF" in input_type and not uploaded_file)
-        or ("Webpage" in input_type and not url_input)
+st.subheader("🔧 Output Options")
+output_col = st.columns([1])[0]
+with output_col:
+    output_formats = st.multiselect(
+        "Select components to include:",
+        options=["Markdown", "Images", "Tables"],
+        default=["Markdown"],
+        help="Choose which components to include in your output.",
     )
-
-    if process_disabled and not health_status:
-        st.error("Processing disabled because the backend service is offline.")
-    elif process_disabled and len(output_formats) == 0:
-        st.caption(
-            "ℹ️ Please select at least one output component to enable processing."
-        )
-    elif process_disabled and (
-        "PDF" in input_type
-        and not uploaded_file
-        or "Webpage" in input_type
-        and not url_input
-    ):
-        st.caption("ℹ️ Please provide a valid input to enable processing.")
-else:
-    # Standardization options don't require output formats selection
-    process_disabled = (
-        (not health_status)
-        or ("PDF" in input_type and not uploaded_file)
-        or ("Webpage" in input_type and not url_input)
+# Disable processing if the backend is offline OR input/outputs are missing
+process_disabled = (
+    (not health_status)
+    or len(output_formats) == 0
+    or ("PDF" in input_type and not uploaded_file)
+    or ("Webpage" in input_type and not url_input)
+)
+if process_disabled and not health_status:
+    st.error("Processing disabled because the backend service is offline.")
+elif process_disabled and len(output_formats) == 0:
+    st.caption(
+        "ℹ️ Please select at least one output component to enable processing."
     )
-    if process_disabled and not health_status:
-        st.error("Processing disabled because the backend service is offline.")
+elif process_disabled and (
+    "PDF" in input_type
+    and not uploaded_file
+    or "Webpage" in input_type
+    and not url_input
+):
+    st.caption("ℹ️ Please provide a valid input to enable processing.")
+
+if process_disabled and not health_status:
+    st.error("Processing disabled because the backend service is offline.")
 
 
 def process_content(endpoint, files=None, json=None, params=None, timeout=300):
@@ -219,68 +208,44 @@ if st.button(
     use_container_width=True,
     disabled=process_disabled,
 ):
-    if parser_type in ["Standardize Docling", "Standardize MarkItDown"]:
-        if "PDF" in input_type and uploaded_file:
-            endpoint = (
-                "/standardizedoclingpdf/"
-                if parser_type == "Standardize Docling"
-                else "/standardizemarkitdownpdf/"
+    params = {
+        "include_markdown": "Markdown" in output_formats,
+        "include_images": "Images" in output_formats,
+        "include_tables": "Tables" in output_formats,
+    }
+    if parser_type == "Llama Parser":
+        with st.spinner("🔍 Parsing PDF content with Llama Parser..."):
+            process_content(
+                "/processpdfenterprise/",
+                files={
+                    "file": (uploaded_file.name, uploaded_file, "application/pdf")
+                },
+                params=params,
             )
-            with st.spinner("🔍 Standardizing PDF content..."):
-                process_content(
-                    endpoint,
-                    files={
-                        "file": (uploaded_file.name, uploaded_file, "application/pdf")
-                    },
-                )
-        elif "Webpage" in input_type and url_input:
-            endpoint = (
-                "/standardizedoclingurl/"
-                if parser_type == "Standardize Docling"
-                else "/standardizemarkitdownurl/"
+    elif parser_type == "Firecrawl":
+        with st.spinner("🌐 Parsing webpage content with Firecrawl..."):
+            process_content(
+                "/processurlenterprise/", json={"url": url_input}, params=params
             )
-            with st.spinner("🌐 Standardizing webpage content..."):
-                process_content(endpoint, json={"url": url_input})
     else:
-        params = {
-            "include_markdown": "Markdown" in output_formats,
-            "include_images": "Images" in output_formats,
-            "include_tables": "Tables" in output_formats,
-        }
-
-        if parser_type == "Llama Parser":
-            with st.spinner("🔍 Parsing PDF content with Llama Parser..."):
+        if "PDF" in input_type and uploaded_file:
+            with st.spinner("🔍 Parsing PDF content..."):
                 process_content(
-                    "/processpdfenterprise/",
+                    "/processpdf/",
                     files={
-                        "file": (uploaded_file.name, uploaded_file, "application/pdf")
+                        "file": (
+                            uploaded_file.name,
+                            uploaded_file,
+                            "application/pdf",
+                        )
                     },
                     params=params,
                 )
-        elif parser_type == "Firecrawl":
-            with st.spinner("🌐 Parsing webpage content with Firecrawl..."):
-                process_content(
-                    "/processurlenterprise/", json={"url": url_input}, params=params
-                )
         else:
-            if "PDF" in input_type and uploaded_file:
-                with st.spinner("🔍 Parsing PDF content..."):
-                    process_content(
-                        "/processpdf/",
-                        files={
-                            "file": (
-                                uploaded_file.name,
-                                uploaded_file,
-                                "application/pdf",
-                            )
-                        },
-                        params=params,
-                    )
-            else:
-                with st.spinner("🌐 Analyzing webpage content..."):
-                    process_content(
-                        "/processurl/", json={"url": url_input}, params=params
-                    )
+            with st.spinner("🌐 Analyzing webpage content..."):
+                process_content(
+                    "/processurl/", json={"url": url_input}, params=params
+                )
 
 # Feature Explanation
 with st.expander("ℹ️ About ParseForge Features"):
@@ -288,9 +253,8 @@ with st.expander("ℹ️ About ParseForge Features"):
         """
     **Key Features:**
     - **Custom Python Parser** *(Default Option)*:
-        - **PDF Parsing:** 
-            - Built using PyMuPDF for extracting images from PDFs.
-            - Uses Docling to extract text and tables with precision.
+        - **Python Parser** *(Custom PDF & Webpage Parsing)*:
+            - Built using PyMuPDF and MarkItDown for extracting images and text from PDFs.
         - **Webpage Parsing:** 
             - Powered by BeautifulSoup for extracting structured content from webpages.
             - Suitable for projects requiring lightweight, rule-based parsing.
@@ -300,11 +264,7 @@ with st.expander("ℹ️ About ParseForge Features"):
     - **Firecrawl** *(Enterprise Webpage Parsing)*:
         - Advanced web scraping engine for extracting structured content from webpages.
         - Suitable for projects requiring advanced web scraping capabilities.
-    - **Standardization Options:**
-        - **Standardize Docling:** 
-            - Standardize document structure using Docling.
-        - **Standardize MarkItDown:** 
-            - Standardize document structure using MarkItDown.
+
     - **Multi-Format Support:**
         - PDF documents (scanned & digital)
         - Webpages (articles, blogs, documentation)

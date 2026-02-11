@@ -9,18 +9,26 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from backend.pipelines import (
-    standardize_docling,
-    standardize_markitdown,
-    html_to_md_docling,
+    html_to_md_python,
     get_job_name,
-    pdf_to_md_docling,
+    pdf_to_md_python,
     clean_temp_files,
     pdf_to_md_enterprise,
     html_to_md_enterprise,
 )
 
+from backend.logging_config import logger
+from fastapi import Request
+
 load_dotenv()
 app = FastAPI()
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"Request: {request.method} {request.url}")
+    response = await call_next(request)
+    logger.info(f"Response: {response.status_code}")
+    return response
 
 
 class URLRequest(BaseModel):
@@ -29,6 +37,7 @@ class URLRequest(BaseModel):
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 async def health_check():
+    logger.info("Health check endpoint called")
     return {"status": "ok"}
 
 
@@ -40,14 +49,17 @@ async def process_url(
     include_images: bool = Query(False),
     include_tables: bool = Query(False),
 ):
+    logger.info(f"Processing URL: {request.url}")
     if not any([include_markdown, include_images, include_tables]):
+        logger.error("At least one output type must be selected")
         raise HTTPException(
             status_code=400, detail="At least one output type must be selected"
         )
     try:
         url = request.url
         job_name = get_job_name()
-        result = html_to_md_docling(url, job_name)
+        logger.info(f"Assigned job name: {job_name}")
+        result = html_to_md_python(url, job_name)
         background_tasks.add_task(my_background_task)
 
         if include_images or include_tables:  # images or tables are requested
@@ -55,6 +67,7 @@ async def process_url(
                 result, include_markdown, include_images, include_tables
             )
             if flag:
+                logger.info("Returning zip archive")
                 return StreamingResponse(
                     zip_buffer,
                     media_type="application/zip",
@@ -63,13 +76,16 @@ async def process_url(
                     },
                 )
             else:
+                logger.error(f"Failed to create zip archive: {messages}")
                 raise HTTPException(status_code=500, detail=messages)
         else:
             if not result["markdown"]:
+                logger.error("Markdown generation failed")
                 raise HTTPException(
                     status_code=500,
                     detail="Markdown couldn't be generated. Maybe webpage has no data.",
                 )
+            logger.info("Returning markdown file")
             return FileResponse(
                 result["markdown"],
                 media_type="application/octet-stream",
@@ -78,6 +94,7 @@ async def process_url(
             )
 
     except Exception as e:
+        logger.error(f"Error processing URL: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -89,12 +106,15 @@ async def process_pdf(
     include_images: bool = Query(False),
     include_tables: bool = Query(False),
 ):
+    logger.info(f"Processing PDF: {file.filename}")
     if not any([include_markdown, include_images, include_tables]):
+        logger.error("At least one output type must be selected")
         raise HTTPException(
             status_code=400, detail="At least one output type must be selected"
         )
 
     if file.content_type != "application/pdf":
+        logger.error(f"Invalid file type: {file.content_type}")
         raise HTTPException(status_code=400, detail="File must be a PDF")
 
     try:
@@ -103,19 +123,21 @@ async def process_pdf(
         output = Path("./temp_processing/output/pdf")
         os.makedirs(output, exist_ok=True)
         job_name = get_job_name()
+        logger.info(f"Assigned job name: {job_name}")
 
         file_path = output / f"{job_name}.pdf"
         with open(file_path, "wb") as f:
             f.write(contents)
             await file.close()
 
-        result = pdf_to_md_docling(file_path, job_name)
+        result = pdf_to_md_python(file_path, job_name)
 
         if include_images or include_tables:  # images or tables are requested
             flag, zip_buffer, messages = create_zip_archive(
                 result, include_markdown, include_images, include_tables
             )
             if flag:
+                logger.info("Returning zip archive")
                 return StreamingResponse(
                     zip_buffer,
                     media_type="application/zip",
@@ -124,14 +146,17 @@ async def process_pdf(
                     },
                 )
             else:
+                logger.error(f"Failed to create zip archive: {messages}")
                 raise HTTPException(status_code=500, detail=messages)
 
         else:
             if not result["markdown"] or not os.path.exists(result["markdown"]):
+                logger.error("Markdown generation failed")
                 raise HTTPException(
                     status_code=500,
-                    detail="Markdown couldn't be generated. Maybe webpage has no data.",
+                    detail="Markdown couldn't be generated. Maybe pdf has no data.",
                 )
+            logger.info("Returning markdown file")
             return FileResponse(
                 result["markdown"],
                 media_type="application/octet-stream",
@@ -139,115 +164,10 @@ async def process_pdf(
             )
 
     except Exception as e:
+        logger.error(f"Error processing PDF: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         await file.close()
-
-
-@app.post("/standardizedoclingpdf/", status_code=status.HTTP_200_OK)
-async def standardizedoclingpdf(file: UploadFile, background_tasks: BackgroundTasks):
-    if file.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="File must be a PDF")
-
-    background_tasks.add_task(my_background_task)
-    contents = await file.read()
-    output = Path("./temp_processing/output/pdf")
-    os.makedirs(output, exist_ok=True)
-    job_name = get_job_name()
-    try:
-        file_path = output / f"{job_name}.pdf"
-        with open(file_path, "wb") as f:
-            f.write(contents)
-            await file.close()
-        standardized_output = standardize_docling(str(file_path), job_name)
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    return FileResponse(
-        standardized_output,
-        media_type="application/octet-stream",
-        filename=f"{file.filename}.md",
-    )
-
-
-@app.post("/standardizedoclingurl/", status_code=status.HTTP_200_OK)
-async def standardizedoclingurl(request: URLRequest, background_tasks: BackgroundTasks):
-    try:
-        url = request.url
-        job_name = get_job_name()
-        background_tasks.add_task(my_background_task)
-
-        standardized_output = standardize_docling(url, job_name)
-
-        if standardized_output == -1:
-            raise HTTPException(
-                status_code=500,
-                detail="Markdown couldn't be generated. Maybe webpage has no data.",
-            )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    return FileResponse(
-        standardized_output,
-        media_type="application/octet-stream",
-        filename=f"{job_name}.md",
-    )
-
-
-@app.post("/standardizemarkitdownpdf/", status_code=status.HTTP_200_OK)
-async def standardizemarkitdownpdf(file: UploadFile, background_tasks: BackgroundTasks):
-    if file.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="File must be a PDF")
-
-    background_tasks.add_task(my_background_task)
-    contents = await file.read()
-    output = Path("./temp_processing/output/pdf")
-    os.makedirs(output, exist_ok=True)
-    job_name = get_job_name()
-    try:
-        file_path = output / f"{job_name}.pdf"
-        with open(file_path, "wb") as f:
-            f.write(contents)
-            await file.close()
-        standardized_output = standardize_markitdown(str(file_path), job_name)
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    return FileResponse(
-        standardized_output,
-        media_type="application/octet-stream",
-        filename=f"{file.filename}.md",
-    )
-
-
-@app.post("/standardizemarkitdownurl/", status_code=status.HTTP_200_OK)
-async def standardizemarkitdownurl(
-    request: URLRequest, background_tasks: BackgroundTasks
-):
-    try:
-        url = request.url
-        job_name = get_job_name()
-        background_tasks.add_task(my_background_task)
-
-        standardized_output = standardize_markitdown(url, job_name)
-
-        if standardized_output == -1:
-            raise HTTPException(
-                status_code=500,
-                detail="Markdown couldn't be generated. Maybe webpage has no data.",
-            )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    return FileResponse(
-        standardized_output,
-        media_type="application/octet-stream",
-        filename=f"{job_name}.md",
-    )
 
 
 @app.post("/processpdfenterprise/", status_code=status.HTTP_200_OK)
@@ -258,12 +178,15 @@ async def process_pdf_enterprise(
     include_images: bool = Query(False),
     include_tables: bool = Query(False),
 ):
+    logger.info(f"Processing PDF (Enterprise): {file.filename}")
     if not any([include_markdown, include_images, include_tables]):
+        logger.error("At least one output type must be selected")
         raise HTTPException(
             status_code=400, detail="At least one output type must be selected"
         )
 
     if file.content_type != "application/pdf":
+        logger.error(f"Invalid file type: {file.content_type}")
         raise HTTPException(status_code=400, detail="File must be a PDF")
     try:
         background_tasks.add_task(my_background_task)
@@ -271,6 +194,7 @@ async def process_pdf_enterprise(
         output = Path("./temp_processing/output/pdf")
         os.makedirs(output, exist_ok=True)
         job_name = get_job_name()
+        logger.info(f"Assigned job name: {job_name}")
 
         file_path = output / f"{job_name}.pdf"
         with open(file_path, "wb") as f:
@@ -284,6 +208,7 @@ async def process_pdf_enterprise(
                 result, include_markdown, include_images, include_tables
             )
             if flag:
+                logger.info("Returning zip archive")
                 return StreamingResponse(
                     zip_buffer,
                     media_type="application/zip",
@@ -292,13 +217,16 @@ async def process_pdf_enterprise(
                     },
                 )
             else:
+                logger.error(f"Failed to create zip archive: {messages}")
                 raise HTTPException(status_code=500, detail=messages)
         else:
             if not result["markdown"] or not os.path.exists(result["markdown"]):
+                logger.error("Markdown generation failed")
                 raise HTTPException(
                     status_code=500,
                     detail="Markdown couldn't be generated. Maybe webpage has no data.",
                 )
+            logger.info("Returning markdown file")
             return FileResponse(
                 result["markdown"],
                 media_type="application/octet-stream",
@@ -306,6 +234,7 @@ async def process_pdf_enterprise(
             )
 
     except Exception as e:
+        logger.error(f"Error processing PDF (Enterprise): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         await file.close()
@@ -319,13 +248,16 @@ async def process_url_enterprise(
     include_images: bool = Query(False),
     include_tables: bool = Query(False),
 ):
+    logger.info(f"Processing URL (Enterprise): {request.url}")
     if not any([include_markdown, include_images, include_tables]):
+        logger.error("At least one output type must be selected")
         raise HTTPException(
             status_code=400, detail="At least one output type must be selected"
         )
     try:
         url = request.url
         job_name = get_job_name()
+        logger.info(f"Assigned job name: {job_name}")
         result = html_to_md_enterprise(url, job_name)
         background_tasks.add_task(my_background_task)
 
@@ -334,6 +266,7 @@ async def process_url_enterprise(
                 result, include_markdown, include_images, include_tables
             )
             if flag:
+                logger.info("Returning zip archive")
                 return StreamingResponse(
                     zip_buffer,
                     media_type="application/zip",
@@ -342,13 +275,16 @@ async def process_url_enterprise(
                     },
                 )
             else:
+                logger.error(f"Failed to create zip archive: {messages}")
                 raise HTTPException(status_code=500, detail=messages)
         else:
             if not result["markdown"]:
+                logger.error("Markdown generation failed")
                 raise HTTPException(
                     status_code=500,
                     detail="Markdown couldn't be generated. Maybe webpage has no data.",
                 )
+            logger.info("Returning markdown file")
             return FileResponse(
                 result["markdown"],
                 media_type="application/octet-stream",
@@ -357,6 +293,7 @@ async def process_url_enterprise(
             )
 
     except Exception as e:
+        logger.error(f"Error processing URL (Enterprise): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

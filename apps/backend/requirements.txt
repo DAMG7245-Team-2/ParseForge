@@ -1,9 +1,8 @@
 beautifulsoup4==4.13.3
 boto3==1.36.13
-docling
 fastapi[standard]
 llama_parse==0.5.20
-markitdown==0.0.1a3
+markitdown[pdf]
 pandas==2.2.3
 Pillow
 pymupdf==1.26.6
@@ -14,4 +13,3 @@ pathlib~=1.0.1
 python-dotenv~=1.0.1
 llama-parse~=0.5.20
 uvicorn
-easyocr

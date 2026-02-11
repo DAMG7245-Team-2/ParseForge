@@ -2,6 +2,7 @@
 apps/backend/temp_processing/
 __pycache__/
 **/*.env
+*.log
 
 # uv files (tracking requirements.txt instead)
 uv.lock
