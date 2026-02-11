@@ -13,3 +13,4 @@ pathlib~=1.0.1
 python-dotenv~=1.0.1
 llama-parse~=0.5.20
 uvicorn
+lxml
